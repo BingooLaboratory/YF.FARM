@@ -111,22 +111,36 @@ describe("YF Pool", () => {
     const { governor } = await ethers.getNamedSigner('governor');
 
     const options = { from: creator, value: fund10 };
-    const mdx_wht = await read('YFPool', 'poolInfo', 1);
-    const strat = await ethers.getContractAt(strategy.abi, mdx_wht.strat, governor);
+    const yToken = await get('YFToken');
+    const yPool = await ethers.getContract('YFPool', sa);
+
+    const husd_usdt = await read('YFPool', 'poolInfo', 0);
+    const mdx_wht   = await read('YFPool', 'poolInfo', 1);
+
+    const strat0 = await ethers.getContractAt(strategy.abi, husd_usdt.strat, governor);
+    const strat1 = await ethers.getContractAt(strategy.abi, mdx_wht.strat, governor);
 
     // 单币 -> LP
+    const usdAmount = ethers.utils.parseUnits('10', 8);
     const interface = new ethers.utils.Interface(strategy.abi);
-    const calldata = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
+    const calldata0 = interface.encodeFunctionData('addLiquidityWERC20', [[ usdAmount, 0, 0, 0, 0 ]]);
+    const calldata1 = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
 
-    // 1. deposit
-    await execute('YFPool', options, 'execute', 1, calldata);
+    // 1. deposit HUSD
+    const husd = await ethers.getContractAt(yToken.abi, '0x0298c2b32eaE4da002a15f36fdf7615BEa3DA047', sa);
+    await husd.approve(yPool.address, usdAmount);
+    await yPool.execute(0, calldata0);
+
+    // 2. deposit HT
+    await execute('YFPool', options, 'execute', 1, calldata1);
 
     await mineBlock();
     await mineBlock();
     await mineBlock();
 
-    // 2. autocomp
-    await strat.earn();
+    // 3. autocomp
+    await strat0.earn();
+    await strat1.earn();
 
     await mineBlock();
     await mineBlock();

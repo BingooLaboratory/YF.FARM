@@ -52,9 +52,6 @@ task("accounts", "Prints the list of accounts", async () => {
       url: 'https://bsc-dataseed1.ninicoin.io'
     },
     heco: {
-      accounts: {
-        mnemonic: "work uphold between square hidden shield hub between sand expand hurt wide"
-      },
       chainId: 128,
       gas: 'auto',
       gasPrice: 'auto',

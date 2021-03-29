@@ -137,8 +137,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
 
         // only staked
         if (!isAutoComp) {
-            uint amount = IERC20(desire).balanceOf(address(this));
-            IERC20(desire).safeIncreaseAllowance(address(pool), amount);
+            ensureApprove(desire, address(pool));
         }
 
         // 6. Refund leftovers to users
@@ -178,11 +177,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         uint wantAmt = IERC20(desire).balanceOf(address(this));
         wantLockedTotal = wantLockedTotal.add(wantAmt);
 
-        IERC20(desire).safeIncreaseAllowance(
-            address(farmPool),
-            wantAmt
-        );
-
+        ensureApprove(desire, address(farmPool));
         farmPool.deposit(pid, wantAmt);
     }
 
@@ -222,7 +217,6 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
 
         // Withdraw fee: 0.015%
         IERC20(desire).safeTransfer(custodian, fee);
-
         if (isErc20Token) {
             IERC20(desire).safeTransfer(_userAddress, _wantAmt.sub(fee));
         } else {
@@ -238,16 +232,15 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
     // 3. Deposits want tokens
     function earn() public whenNotPaused {
         require(isAutoComp, "!isAutoComp");
+        lastEarnBlock = block.number;
 
         // Harvest farm tokens
         farmPool.withdraw(pid, 0);
+        ensureApprove(earned, address(router));
 
         // Converts farm tokens into want tokens
         uint earnedAmt = IERC20(earned).balanceOf(address(this));
         earnedAmt = distributeHarvest(earnedAmt);
-
-        IERC20(earned).safeIncreaseAllowance(address(router), earnedAmt);
-        lastEarnBlock = block.number;
 
         // Single token autocomp
         if (isErc20Token) {
@@ -291,6 +284,8 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         uint token1Amt = IERC20(token1).balanceOf(address(this));
 
         if (token0Amt > 0 && token1Amt > 0) {
+            ensureApprove(token0, address(router));
+            ensureApprove(token1, address(router));
             router.addLiquidity(
                 token0,
                 token1,
@@ -311,20 +306,16 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         uint fee_ = earnedAmt_.mul(
                 controllerFee1.add(controllerFee2).add(controllerFee3)
             ).div(controllerFeeMax);
-
         uint buyback_ = earnedAmt_.mul(buybackRate).div(buybackRateMax);
         uint harvest_ = earnedAmt_.sub(fee_).sub(buyback_).div(2);
 
-        // Transmit: USDT
         {
+            // Transmit: Harvest
+            IERC20(earned).safeTransfer(address(pool), harvest_);
 
-            uint fee1 = fee_.mul(controllerFee1).div(controllerFeeMax); // 1%
-            uint fee2 = fee_.mul(controllerFee2).div(controllerFeeMax); // 3%
-
+            // Transmit: USDT
             address[] memory path = new address[](3);
             (path[0], path[1], path[2]) = (earned, WHT, USDT);
-
-            IERC20(earned).safeIncreaseAllowance(address(router), fee_);
             router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 fee_,
                 0,
@@ -332,31 +323,31 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
                 address(this),
                 now
             );
+            uint usd_0 = IERC20(USDT).balanceOf(address(this));
+            uint usd_1 = usd_0.mul(controllerFee1).div(controllerFeeMax); // 1%
+            uint usd_2 = usd_0.mul(controllerFee2).div(controllerFeeMax); // 3%
+            uint usd_3 = usd_0.sub(usd_1).sub(usd_2);
 
-            IERC20(USDT).safeTransfer(custodian, fee1);
-            IERC20(USDT).safeTransfer(treasury, fee2);
+            IERC20(USDT).safeTransfer(custodian, usd_1);
+            IERC20(USDT).safeTransfer(treasury, usd_2);
+            IERC20(USDT).safeTransfer(address(pool), usd_3);
 
-            fee_ = fee_.sub(fee1).sub(fee2);
-            IERC20(USDT).safeTransfer(address(pool), fee_);
-        }
-
-        // Transmit: Buyback
-        {
-            address[] memory path = new address[](3);
+            // Transmit: Buyback
             (path[0], path[1], path[2]) = (earned, WHT, YFToken);
-
-            IERC20(earned).safeIncreaseAllowance(address(router), buyback_);
             router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 buyback_,
                 0,
                 path,
-                address(pool),
+                address(this),
                 now
             );
-            IERC20(earned).safeTransfer(address(pool), harvest_);
+            uint yf_ = IERC20(YFToken).balanceOf(address(this));
+            IERC20(YFToken).safeTransfer(address(pool), yf_);
+
+            // transmit to pool
+            pool.distributeHarvest(usd_3, yf_, harvest_);
         }
 
-        pool.distributeHarvest(fee_, buyback_, harvest_);
         return earnedAmt_.sub(fee_).sub(buyback_).sub(harvest_);
     }
 
@@ -369,11 +360,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         uint token0Amt = IERC20(token0).balanceOf(address(this));
 
         if (token0 != earned && token0Amt > 0) {
-            IERC20(token0).safeIncreaseAllowance(
-                address(router),
-                token0Amt
-            );
-
+            ensureApprove(token0, address(router));
             // Swap all dust tokens to earned tokens
             router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 token0Amt,
@@ -387,11 +374,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         // Converts token1 dust (if any) to earned tokens
         uint token1Amt = IERC20(token1).balanceOf(address(this));
         if (token1 != earned && token1Amt > 0) {
-            IERC20(token1).safeIncreaseAllowance(
-                address(router),
-                token1Amt
-            );
-
+            ensureApprove(token1, address(router));
             // Swap all dust tokens to earned tokens
             router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 token1Amt,
