@@ -58,17 +58,17 @@ describe("YF Pool", () => {
     const [ creator ] = await getUnnamedAccounts();
     const options = { from: creator, value:  fund10 };
 
-    const mdx_wht = await read('YFPool', 'poolInfo', 1);
+    const mdx_wht = await read('YFPool', 'poolInfo', 3);
     const strat = await ethers.getContractAt(strategy.abi, mdx_wht.strat);
 
     // 单币 -> LP
     const interface = new ethers.utils.Interface(strategy.abi);
     const amount = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
-    await execute('YFPool', options, 'execute', 1, amount);
+    await execute('YFPool', options, 'execute', 3, amount);
 
     const wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
     const sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
-    const userShares      = await read('YFPool', 'userInfo', 1, creator).then(({ shares }) => fromWei(shares));
+    const userShares      = await read('YFPool', 'userInfo', 3, creator).then(({ shares }) => fromWei(shares));
     const hecoShares      = await hecoPool.userInfo(19, mdx_wht.strat).then(({ amount }) => fromWei(amount));
 
     expect(userShares).to.equal(sharesTotal);
@@ -80,7 +80,7 @@ describe("YF Pool", () => {
     const [ creator ] = await getUnnamedAccounts();
     const options = { from: creator, value:  fund10 };
 
-    const mdx_wht = await read('YFPool', 'poolInfo', 1);
+    const mdx_wht = await read('YFPool', 'poolInfo', 3);
     const strat = await ethers.getContractAt(strategy.abi, mdx_wht.strat);
 
     // 单币 -> LP
@@ -88,16 +88,16 @@ describe("YF Pool", () => {
     const calldata = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
 
     // 1. deposit
-    await execute('YFPool', options, 'execute', 1, calldata);
+    await execute('YFPool', options, 'execute', 3, calldata);
 
     // 2. withdraw
     const lp = await hecoPool.userInfo(19, mdx_wht.strat);
-    await execute('YFPool', { from: creator }, 'withdraw', 1, lp.amount);
+    await execute('YFPool', { from: creator }, 'withdraw', 3, lp.amount);
 
     // 3. withdraw 0.02% 手续费
     const wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
     const sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
-    const userShares      = await read('YFPool', 'userInfo', 1, creator).then(({ shares }) => fromWei(shares));
+    const userShares      = await read('YFPool', 'userInfo', 3, creator).then(({ shares }) => fromWei(shares));
     const hecoShares      = await hecoPool.userInfo(19, mdx_wht.strat).then(({ amount }) => fromWei(amount));
 
     expect(userShares).to.equal(sharesTotal);
@@ -114,8 +114,8 @@ describe("YF Pool", () => {
     const yToken = await get('YFToken');
     const yPool = await ethers.getContract('YFPool', sa);
 
-    const husd_usdt = await read('YFPool', 'poolInfo', 0);
-    const mdx_wht   = await read('YFPool', 'poolInfo', 1);
+    const husd_usdt = await read('YFPool', 'poolInfo', 2);
+    const mdx_wht   = await read('YFPool', 'poolInfo', 3);
 
     const strat0 = await ethers.getContractAt(strategy.abi, husd_usdt.strat, governor);
     const strat1 = await ethers.getContractAt(strategy.abi, mdx_wht.strat, governor);
@@ -129,12 +129,11 @@ describe("YF Pool", () => {
     // 1. deposit HUSD
     const husd = await ethers.getContractAt(yToken.abi, '0x0298c2b32eaE4da002a15f36fdf7615BEa3DA047', sa);
     await husd.approve(yPool.address, usdAmount);
-    await yPool.execute(0, calldata0);
+    await yPool.execute(2, calldata0);
 
     // 2. deposit HT
-    await execute('YFPool', options, 'execute', 1, calldata1);
+    await execute('YFPool', options, 'execute', 3, calldata1);
 
-    await mineBlock();
     await mineBlock();
     await mineBlock();
 
@@ -144,5 +143,137 @@ describe("YF Pool", () => {
 
     await mineBlock();
     await mineBlock();
+  });
+
+  it("Should Single-Token spell LP to Staked", async () => {
+    const [ creator ] = await getUnnamedAccounts();
+    const options = { from: creator, value:  fund10 };
+
+    const wht_eth = await read('YFPool', 'poolInfo', 4);
+    const strat = await ethers.getContractAt(strategy.abi, wht_eth.strat);
+
+    // 单币 -> LP
+    const interface = new ethers.utils.Interface(strategy.abi);
+    const amount = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
+    await execute('YFPool', options, 'execute', 4, amount);
+
+    const wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    const sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    const userShares      = await read('YFPool', 'userInfo', 4, creator).then(({ shares }) => fromWei(shares));
+    const hecoShares      = await hecoPool.userInfo(30, wht_eth.strat).then(({ amount }) => fromWei(amount));
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal('0.0');
+  });
+
+  it("Should withdraw staked LP split to Single-Token", async () => {
+    const [ creator ] = await getUnnamedAccounts();
+    const options = { from: creator, value:  fund10 };
+
+    const wht_eth = await read('YFPool', 'poolInfo', 4);
+    const strat = await ethers.getContractAt(strategy.abi, wht_eth.strat);
+
+    // 单币 -> LP
+    const interface = new ethers.utils.Interface(strategy.abi);
+    const calldata = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
+
+    // 1. deposit
+    await execute('YFPool', options, 'execute', 4, calldata);
+
+    // 2. withdraw
+    const lp = await read('YFPool', 'userInfo', 4, creator);
+    await execute('YFPool', { from: creator }, 'withdraw', 4, lp.shares);
+
+    // 3. withdraw 0.02% 手续费
+    const wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    const sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    const userShares      = await read('YFPool', 'userInfo', 4, creator).then(({ shares }) => fromWei(shares));
+    const hecoShares      = await hecoPool.userInfo(30, wht_eth.strat).then(({ amount }) => fromWei(amount));;
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal('0.0');
+    expect(userShares).to.equal('0.0');
+  });
+
+  it("Should deposit & withdraw Single-Token to autocomp", async () => {
+    const { governor } = await ethers.getNamedSigner('governor');
+    const yToken = await get('YFToken');
+    const yPool = await ethers.getContract('YFPool', sa);
+
+    const pool = await read('YFPool', 'poolInfo', 0);
+    const strat = await ethers.getContractAt(strategy.abi, pool.strat);
+
+    // 1. deposit HBTC
+    const hbtc = await ethers.getContractAt(yToken.abi, '0x66a79D23E58475D2738179Ca52cd0b41d73f0BEa', sa);
+    await hbtc.approve(yPool.address, ethers.utils.parseUnits('0.005'));
+    await yPool.deposit(0, ethers.utils.parseUnits('0.005'));
+
+    let wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    let sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    let userShares      = await read('YFPool', 'userInfo', 0, richer).then(({ shares }) => fromWei(shares));
+    let hecoShares      = await hecoPool.userInfo(1, pool.strat).then(({ amount }) => fromWei(amount));
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal(userShares);
+
+    // 2. autocomp
+    const strat0 = await ethers.getContractAt(strategy.abi, pool.strat, governor);
+    await mineBlock();
+    await strat0.earn();
+    await mineBlock();
+
+    // 3. withdraw HBTC
+    userShares = await read('YFPool', 'userInfo', 0, richer);
+    await yPool.withdraw(0, userShares.shares);
+
+    wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    userShares      = await read('YFPool', 'userInfo', 0, richer).then(({ shares }) => fromWei(shares));
+    hecoShares      = await hecoPool.userInfo(1, pool.strat).then(({ amount }) => fromWei(amount));
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal('0.0');
+    expect(userShares).to.equal('0.0');
+  });
+
+  it("Should deposit & withdraw Single-Token to staked only", async () => {
+    const { governor } = await ethers.getNamedSigner('governor');
+    const yToken = await get('YFToken');
+    const yPool = await ethers.getContract('YFPool', sa);
+
+    const pool = await read('YFPool', 'poolInfo', 1);
+    const strat = await ethers.getContractAt(strategy.abi, pool.strat);
+
+    // 1. deposit HUSD
+    const husd = await ethers.getContractAt(yToken.abi, '0x0298c2b32eaE4da002a15f36fdf7615BEa3DA047', sa);
+    await husd.approve(yPool.address, ethers.utils.parseUnits('100', 8));
+    await yPool.deposit(1, ethers.utils.parseUnits('100', 8));
+
+    let wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    let sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    let userShares      = await read('YFPool', 'userInfo', 1, richer).then(({ shares }) => fromWei(shares));
+    let hecoShares      = await hecoPool.userInfo(2, pool.strat).then(({ amount }) => fromWei(amount));
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal('0.0');
+
+    // 2. withdraw HUSD
+    userShares = await read('YFPool', 'userInfo', 1, richer);
+    await yPool.withdraw(1, userShares.shares);
+
+    wantLockedTotal = await strat.wantLockedTotal().then(n => fromWei(n));
+    sharesTotal     = await strat.sharesTotal().then(n => fromWei(n));
+    userShares      = await read('YFPool', 'userInfo', 1, richer).then(({ shares }) => fromWei(shares));
+    hecoShares      = await hecoPool.userInfo(2, pool.strat).then(({ amount }) => fromWei(amount));
+
+    expect(userShares).to.equal(sharesTotal);
+    expect(sharesTotal).to.equal(wantLockedTotal);
+    expect(hecoShares).to.equal('0.0');
+    expect(userShares).to.equal('0.0');
   });
 });

@@ -232,14 +232,16 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
     // 3. Deposits want tokens
     function earn() public whenNotPaused {
         require(isAutoComp, "!isAutoComp");
-        lastEarnBlock = block.number;
 
         // Harvest farm tokens
         farmPool.withdraw(pid, 0);
-        ensureApprove(earned, address(router));
+        lastEarnBlock = block.number;
 
         // Converts farm tokens into want tokens
         uint earnedAmt = IERC20(earned).balanceOf(address(this));
+        if (earnedAmt <= 0) return;
+
+        ensureApprove(earned, address(router));
         earnedAmt = distributeHarvest(earnedAmt);
 
         // Single token autocomp

@@ -1,4 +1,5 @@
 const func = async ({ getNamedAccounts, deployments, network }) => {
+  const { AddressZero } = ethers.constants;
   const { deploy, get, execute } = deployments;
   const { deployer, governor, custodian, boardroom } = await getNamedAccounts();
 
@@ -18,6 +19,94 @@ const func = async ({ getNamedAccounts, deployments, network }) => {
   for (let i = 0; i < poolen; i++) {
     const poolInfo = await hecoPool.poolInfo(i);
     const { allocPoint, lpToken: desire } = poolInfo;
+
+    // 单币复投
+    if (i === 1) {
+      const strat = await deploy('StratX', {
+        from: governor,
+        args: [
+          router,
+          yfPool.address,
+          yToken.address,
+          true,             // isErc20Token: 单币 = true, lp = false
+          true,             // isAutoComp: 自动复投
+          hecoPool.address, // 源机枪池
+          i,                // 源机枪池Id
+          desire,           // deposit token
+          AddressZero,      // lp token0
+          AddressZero,      // lp token1
+          earned            // 源机枪池平台币
+        ]
+      });
+
+      // YF 回购保管地址
+      await execute(
+        'StratX',
+        { from: governor },
+        'setFundsAccount',
+        boardroom,
+        custodian
+      );
+
+      // add to YF pool
+      await execute(
+        'YFPool',
+        { from: deployer },
+        'add',
+        true,         // _withUpdate
+        0,            // _allocYPoint
+        0,            // _allocUPoint
+        true,         // _allocHarvest
+        true,         // _allocBuyback
+        desire,       // deposit token
+        earned,
+        strat.address // 策略
+      );
+    }
+
+    // 单币质押
+    if (i === 2) {
+      const strat = await deploy('StratX', {
+        from: governor,
+        args: [
+          router,
+          yfPool.address,
+          yToken.address,
+          true,             // isErc20Token: 单币 = true, lp = false
+          false,            // isAutoComp: 自动复投
+          hecoPool.address, // 源机枪池
+          i,                // 源机枪池Id
+          desire,           // deposit token
+          AddressZero,      // lp token0
+          AddressZero,      // lp token1
+          AddressZero       // 源机枪池平台币
+        ]
+      });
+
+      // YF 回购保管地址
+      await execute(
+        'StratX',
+        { from: governor },
+        'setFundsAccount',
+        boardroom,
+        custodian
+      );
+
+      // add to YF pool
+      await execute(
+        'YFPool',
+        { from: deployer },
+        'add',
+        true,         // _withUpdate
+        100,          // _allocYPoint
+        100,          // _allocUPoint
+        false,        // _allocHarvest
+        false,        // _allocBuyback
+        desire,       // deposit token
+        AddressZero,
+        strat.address // 策略
+      );
+    }
 
     // only LP token
     if (allocPoint.gt(0) && [ 10, 19, 30, 33 ].includes(i)) {
