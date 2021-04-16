@@ -276,4 +276,47 @@ describe("YF Pool", () => {
     expect(hecoShares).to.equal('0.0');
     expect(userShares).to.equal('0.0');
   });
+
+  it("Should user only withdraw capitals success", async () => {
+    const [ creator ] = await getUnnamedAccounts();
+    const { governor } = await ethers.getNamedSigner('governor');
+
+    const options = { from: creator, value: fund10 };
+    const mdx_wht = await read('YFPool', 'poolInfo', 3);
+    const strat0  = await ethers.getContractAt(strategy.abi, mdx_wht.strat, governor);
+
+    // 单币 -> LP
+    const interface = new ethers.utils.Interface(strategy.abi);
+    const calldata0 = interface.encodeFunctionData('addLiquidityWERC20', [[ 0, 0, 0, 0, 0 ]]);
+
+    let total, capitals, tmp;
+
+    // 1. deposit HT
+    await execute('YFPool', options, 'execute', 3, calldata0);
+    [ total, capitals ] = await read('YFPool', 'stakedWantTokens', 3, creator);
+    expect(total).to.equal(capitals);
+
+    // 2. autocomp
+    await mineBlock();
+    await mineBlock();
+    await strat0.earn();
+    await mineBlock();
+    await mineBlock();
+
+    // 3. withdraw captials
+    await execute('YFPool', { from: creator }, 'withdraw', 3, capitals);
+    [, capitals ] = await read('YFPool', 'stakedWantTokens', 3, creator);
+    expect(fromWei(capitals)).to.equal('0.0');
+
+    // 4. deposit HT twice
+    await execute('YFPool', options, 'execute', 3, calldata0);
+    await execute('YFPool', options, 'execute', 3, calldata0);
+    [, tmp ] = await read('YFPool', 'stakedWantTokens', 3, creator);
+
+    // 5. half withdraw
+    await execute('YFPool', { from: creator }, 'withdraw', 3, fund10);
+    [ total, capitals ] = await read('YFPool', 'stakedWantTokens', 3, creator);
+    expect(total).to.above(capitals);
+    expect(tmp.sub(fund10)).to.equal(capitals);
+  });
 });

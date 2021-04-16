@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.6.12;
+pragma solidity >=0.6.12 <0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
@@ -44,6 +44,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
     // Info of each user.
     struct UserInfo {
         uint shares;     // How many want tokens the user has provided.
+        uint capitals;
 
         uint rewardYDebt; // Reward YF debt
         uint rewardUDebt; // Reward USDT debt
@@ -87,18 +88,20 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
     event Withdraw(address indexed user, uint indexed pid, uint amount);
     event EmergencyWithdraw(address indexed user, uint indexed pid, uint amount);
 
-    address public caster; // The caster address for untrusted execution.
-    address public YFToken;
-    address public USDT = 0xa71EdC38d189767582C38A3145b5873052c3e47a;
+    address public immutable caster; // The caster address for untrusted execution.
+    address public immutable YFToken;
+    address public constant USDT = 0xa71EdC38d189767582C38A3145b5873052c3e47a;
 
-    uint public startBlock       = 3888888;
-    uint public YFTokenMaxSupply = 500e18;
-    uint public YFTokenPerBlock  = 300000000000000;  // YF tokens created per block
+    uint public constant startBlock = 3888888;
+    uint public constant YFTokenMaxSupply = 500e18;
+    uint public constant YFTokenPerBlock  = 300000000000000;  // YF tokens created per block
 
     address private constant _NO_ADDRESS = address(1);
     address public override EXECUTOR; // TEMPORARY: user currently under execution.
 
     constructor(address YFToken_) public {
+        require(YFToken_ != address(0), "Zero address");
+
         YFToken = YFToken_;
         caster = address(new YFCaster());
         EXECUTOR = _NO_ADDRESS;
@@ -266,25 +269,34 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         }
     }
 
-    // View function to see staked Want tokens on frontend.
-    function stakedWantTokens(uint256 _pid, address _user)
+    /// @dev View function to see staked Want tokens on frontend.
+    /// @param _pid id of pool.
+    /// @param _user the user to staked
+    /// @return the total staked
+    /// @return the capitals
+    function stakedWantTokens(uint _pid, address _user)
         external
         view
-        returns (uint256)
+        returns (uint, uint)
     {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
 
-        uint256 sharesTotal     = pool.strat.sharesTotal();
-        uint256 wantLockedTotal = pool.strat.wantLockedTotal();
+        uint sharesTotal     = pool.strat.sharesTotal();
+        uint wantLockedTotal = pool.strat.wantLockedTotal();
 
         if (sharesTotal == 0) {
-            return 0;
+            return (0, 0);
         }
-        return user.shares.mul(wantLockedTotal).div(sharesTotal);
+        return (user.shares.mul(wantLockedTotal).div(sharesTotal), user.capitals);
     }
 
-    // View function to see pending KToken on frontend.
+    /// @dev View function to see pending KToken on frontend.
+    /// @param _pid id of pool.
+    /// @param _user the user to staked
+    /// @return r1_ the YF pending
+    /// @return r2_ the USDT pending
+    /// @return r3_ the `earned token` pending
     function pending(uint _pid, address _user)
         external
         override
@@ -330,22 +342,8 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         updatePool(_pid);
         EXECUTOR = msg.sender;
 
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][EXECUTOR];
-
         // 1. Harvest all reward
-        {
-            (uint r1_, uint r2_, uint r3_) = _pending(_pid, EXECUTOR);
-            if (r1_ > 0) {
-                safeTransfer(YFToken, EXECUTOR, r1_);
-            }
-            if (r2_ > 0) {
-                safeTransfer(USDT, EXECUTOR, r2_);
-            }
-            if (r3_ > 0) {
-                safeTransfer(pool.earned, EXECUTOR, r3_);
-            }
-        }
+        (PoolInfo storage pool, UserInfo storage user) = harvest(_pid, EXECUTOR);
 
         if (_wantAmt > 0) {
             // 1. only staked
@@ -358,6 +356,9 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
             // 2. increase user shares
             uint sharesAdded = pool.strat.deposit(EXECUTOR, _wantAmt);
             user.shares = user.shares.add(sharesAdded);
+
+            // 3. increase user capitals
+            user.capitals = user.capitals.add(_wantAmt);
         }
 
         user.rewardYDebt = user.shares.mul(pool.accYPerShare).div(1e12);
@@ -374,9 +375,9 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][EXECUTOR];
 
-        uint256 wantLockedTotal = pool.strat.wantLockedTotal();
-        uint256 sharesTotal = pool.strat.sharesTotal();
-        uint256 _wantAmt = user.shares.mul(wantLockedTotal).div(sharesTotal);
+        uint wantLockedTotal = pool.strat.wantLockedTotal();
+        uint sharesTotal = pool.strat.sharesTotal();
+        uint _wantAmt = user.shares.mul(wantLockedTotal).div(sharesTotal);
 
         // only stake pool
         if (pool.earned == address(0)) {
@@ -384,7 +385,8 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         }
         pool.strat.withdraw(msg.sender, _wantAmt);
 
-        user.shares = 0;
+        user.shares      = 0;
+        user.capitals    = 0;
         user.rewardYDebt = 0;
         user.rewardUDebt = 0;
         user.rewardHDebt = 0;
@@ -397,28 +399,14 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         updatePool(_pid);
         EXECUTOR = msg.sender;
 
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][EXECUTOR];
+        // 1. Harvest all reward
+        (PoolInfo storage pool, UserInfo storage user) = harvest(_pid, EXECUTOR);
 
         uint sharesTotal     = pool.strat.sharesTotal();
         uint wantLockedTotal = pool.strat.wantLockedTotal();
 
         require(user.shares > 0, "user.shares is 0");
         require(sharesTotal > 0, "sharesTotal is 0");
-
-        // 1. Harvest all reward
-        {
-            (uint r1_, uint r2_, uint r3_) = _pending(_pid, EXECUTOR);
-            if (r1_ > 0) {
-                safeTransfer(YFToken, EXECUTOR, r1_);
-            }
-            if (r2_ > 0) {
-                safeTransfer(USDT, EXECUTOR, r2_);
-            }
-            if (r3_ > 0) {
-                safeTransfer(pool.earned, EXECUTOR, r3_);
-            }
-        }
 
         // 2. Withdraw want tokens
         uint amount = user.shares.mul(wantLockedTotal).div(sharesTotal);
@@ -438,6 +426,12 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
             } else {
                 user.shares = user.shares.sub(sharesRemoved);
             }
+
+            if (_wantAmt > user.capitals) {
+                user.capitals = 0;
+            } else {
+                user.capitals = user.capitals.sub(_wantAmt);
+            }
         }
 
         user.rewardYDebt = user.shares.mul(pool.accYPerShare).div(1e12);
@@ -453,8 +447,8 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
     }
 
     // Safe transfer function, just in case if rounding error causes pool to not have enough
-    function safeTransfer(address token, address _to, uint256 _amount) internal {
-        uint256 bal_ = IERC20(token).balanceOf(address(this));
+    function safeTransfer(address token, address _to, uint _amount) internal {
+        uint bal_ = IERC20(token).balanceOf(address(this));
 
         if (_amount > bal_) {
             IERC20(token).transfer(_to, bal_);
@@ -473,22 +467,8 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         updatePool(_pid);
         EXECUTOR = msg.sender;
 
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][EXECUTOR];
-
         // 1. Harvest all reward
-        {
-            (uint r1_, uint r2_, uint r3_) = _pending(_pid, EXECUTOR);
-            if (r1_ > 0) {
-                safeTransfer(YFToken, EXECUTOR, r1_);
-            }
-            if (r2_ > 0) {
-                safeTransfer(USDT, EXECUTOR, r2_);
-            }
-            if (r3_ > 0) {
-                safeTransfer(pool.earned, EXECUTOR, r3_);
-            }
-        }
+        (PoolInfo storage pool, UserInfo storage user) = harvest(_pid, EXECUTOR);
 
         // Spell single token to lp
         YFCaster(caster).cast{value: msg.value}(address(pool.strat), data);
@@ -503,6 +483,9 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
             // 2. increase user shares
             uint sharesAdded = pool.strat.deposit(EXECUTOR, _wantAmt);
             user.shares = user.shares.add(sharesAdded);
+
+            // 3. increase user capitals
+            user.capitals = user.capitals.add(_wantAmt);
         }
 
         user.rewardYDebt = user.shares.mul(pool.accYPerShare).div(1e12);
@@ -511,6 +494,27 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
         EXECUTOR = _NO_ADDRESS;
         emit Deposit(msg.sender, _pid, _wantAmt);
+    }
+
+    /// @dev Harvest all reward
+    function harvest(uint _pid, address _user) internal returns (PoolInfo storage, UserInfo storage) {
+        PoolInfo storage pool = poolInfo[_pid];
+        UserInfo storage user = userInfo[_pid][_user];
+
+        {
+            (uint r1_, uint r2_, uint r3_) = _pending(_pid, _user);
+            if (r1_ > 0) {
+                safeTransfer(YFToken, _user, r1_);
+            }
+            if (r2_ > 0) {
+                safeTransfer(USDT, _user, r2_);
+            }
+            if (r3_ > 0) {
+                safeTransfer(pool.earned, _user, r3_);
+            }
+        }
+
+        return (pool, user);
     }
 
     /// @dev Transmit user assets to the caller, so users only need to approve Bank for spending.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.6.12;
+pragma solidity >=0.6.12 <0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -25,6 +25,8 @@ abstract contract LpSpell {
         IDexRouter router_,
         IYFPool pool_
     ) public {
+        require(address(router_) != address(0), "Zero address");
+
         router = router_;
         pool = pool_;
     }
@@ -217,7 +219,6 @@ abstract contract LpSpell {
         // 2. Slippage control
         require(IERC20(tokenA).balanceOf(address(this)) >= amt.amtAMin);
         require(IERC20(tokenB).balanceOf(address(this)) >= amt.amtBMin);
-        require(IERC20(lp).balanceOf(address(this)) >= 0);
 
         // 3. Refund leftover
         doRefundETH();

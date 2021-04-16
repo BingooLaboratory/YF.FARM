@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.6.12;
+pragma solidity >=0.6.12 <0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -32,31 +32,31 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
     IFarmPool public farmPool; // address of farm, eg, Heco, Bsc etc.
     uint public pid; // pid of pool in farm
 
-    address public USDT = 0xa71EdC38d189767582C38A3145b5873052c3e47a;
-    address public YFToken;
+    address public constant USDT = 0xa71EdC38d189767582C38A3145b5873052c3e47a;
+    address public immutable YFToken;
 
     address public treasury;
     address public custodian;
 
-    address public desire; // deposit token
+    address public immutable desire; // deposit token
     address public token0; // lp token0 iff deposit is lp token
     address public token1; // lp token1 iff deposit is lp token
-    address public earned; // earned token
+    address public immutable earned; // earned token
 
     uint public lastEarnBlock = 0;
     uint public sharesTotal = 0;
     uint public wantLockedTotal = 0;
 
     uint public withdrawFee = 20;
-    uint public constant withdrawFeeMax = 100000; // 1000 = 1%
+    uint public constant WITHDRAW_FEE_MAX = 100000; // 1000 = 1%
 
     uint256 public controllerFee1 = 100;
     uint256 public controllerFee2 = 300;
     uint256 public controllerFee3 = 300;
-    uint256 public constant controllerFeeMax = 10000; // 100 = 1%
+    uint256 public constant CONTROLLER_FEE_MAX = 10000; // 100 = 1%
 
     uint256 public buybackRate = 300;
-    uint256 public constant buybackRateMax = 10000; // 100 = 1%
+    uint256 public constant BUY_BACK_RATE_MAX = 10000; // 100 = 1%
 
     address[] public earnedToDesirePath;
     address[] public earnedToToken0Path;
@@ -80,6 +80,9 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         address token1_,
         address earned_
     ) LpSpell(router_, pool_) public {
+        require(token_ != address(0), "Zero address");
+        require(desire_ != address(0), "Zero address");
+
         transferOwnership(address(pool_));
         governor = msg.sender;
 
@@ -100,29 +103,29 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
             farmPool = farmPool_;
             pid = pid_;
 
-            earnedToDesirePath = [earned, WHT, desire];
-            if (WHT == earned) {
-                earnedToDesirePath = [WHT, desire];
+            earnedToDesirePath = [earned_, WHT, desire_];
+            if (WHT == earned_) {
+                earnedToDesirePath = [WHT, desire_];
             }
 
-            earnedToToken0Path = [earned, WHT, token0];
+            earnedToToken0Path = [earned_, WHT, token0];
             if (WHT == token0) {
-                earnedToToken0Path = [earned, WHT];
+                earnedToToken0Path = [earned_, WHT];
             }
 
-            earnedToToken1Path = [earned, WHT, token1];
+            earnedToToken1Path = [earned_, WHT, token1];
             if (WHT == token1) {
-                earnedToToken1Path = [earned, WHT];
+                earnedToToken1Path = [earned_, WHT];
             }
 
-            token0ToEarnedPath = [token0, WHT, earned];
+            token0ToEarnedPath = [token0, WHT, earned_];
             if (WHT == token0) {
-                token0ToEarnedPath = [WHT, earned];
+                token0ToEarnedPath = [WHT, earned_];
             }
 
-            token1ToEarnedPath = [token1, WHT, earned];
+            token1ToEarnedPath = [token1, WHT, earned_];
             if (WHT == token1) {
-                token1ToEarnedPath = [WHT, earned];
+                token1ToEarnedPath = [WHT, earned_];
             }
         }
     }
@@ -188,7 +191,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
     function withdraw(address _userAddress, uint _wantAmt)
         public
         onlyOwner
-        whenNotPaused
+        nonReentrant
         returns (uint)
     {
         require(_wantAmt > 0, "_wantAmt <= 0");
@@ -206,7 +209,7 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
             _wantAmt = wantLockedTotal;
         }
 
-        uint fee = _wantAmt.mul(withdrawFee).div(withdrawFeeMax);
+        uint fee = _wantAmt.mul(withdrawFee).div(WITHDRAW_FEE_MAX);
         uint sharesRemoved = _wantAmt.mul(sharesTotal).div(wantLockedTotal);
 
         if (sharesRemoved > sharesTotal) {
@@ -307,8 +310,8 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         // Convert earned to USDT
         uint fee_ = earnedAmt_.mul(
                 controllerFee1.add(controllerFee2).add(controllerFee3)
-            ).div(controllerFeeMax);
-        uint buyback_ = earnedAmt_.mul(buybackRate).div(buybackRateMax);
+            ).div(CONTROLLER_FEE_MAX);
+        uint buyback_ = earnedAmt_.mul(buybackRate).div(BUY_BACK_RATE_MAX);
         uint harvest_ = earnedAmt_.sub(fee_).sub(buyback_).div(2);
 
         {
@@ -326,8 +329,8 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
                 now
             );
             uint usd_0 = IERC20(USDT).balanceOf(address(this));
-            uint usd_1 = usd_0.mul(controllerFee1).div(controllerFeeMax); // 1%
-            uint usd_2 = usd_0.mul(controllerFee2).div(controllerFeeMax); // 3%
+            uint usd_1 = usd_0.mul(controllerFee1).div(CONTROLLER_FEE_MAX); // 1%
+            uint usd_2 = usd_0.mul(controllerFee2).div(CONTROLLER_FEE_MAX); // 3%
             uint usd_3 = usd_0.sub(usd_1).sub(usd_2);
 
             IERC20(USDT).safeTransfer(custodian, usd_1);
@@ -388,27 +391,43 @@ contract StratX is Ownable, ReentrancyGuard, Pausable, LpSpell {
         }
     }
 
+    event SetGov(address indexed gov);
     function setGov(address governor_) external onlyGov {
+        require(governor_ != address(0), "Zero address");
         governor = governor_;
+        emit SetGov(governor_);
     }
 
+    event SetFundsAccount(address indexed treasury, address indexed custodian);
     function setFundsAccount(address treasury_, address custodian_) external onlyGov {
+        require(treasury_ != address(0), "Zero address");
+        require(custodian_ != address(0), "Zero address");
+
         treasury = treasury_;
         custodian = custodian_;
+        emit SetFundsAccount(treasury_, custodian_);
     }
 
+    event SetBuybackRate(uint indexed rate);
     function setBuybackRate(uint rate_) external onlyGov {
         buybackRate = rate_;
+        emit SetBuybackRate(rate_);
     }
 
+    event SetWithdrawFee(uint indexed rate);
     function setWithdrawFee(uint rate_) external onlyGov {
+        require(rate_ < WITHDRAW_FEE_MAX, "Fee rate overflow");
         withdrawFee = rate_;
+        emit SetWithdrawFee(rate_);
     }
 
+    event SetControllerFee(uint indexed fee1, uint indexed fee2, uint indexed fee3);
     function setControllerFee(uint fee1, uint fee2, uint fee3) external onlyGov {
+        require(fee1 + fee2 + fee3 < CONTROLLER_FEE_MAX, "Overflow of Proportions");
         controllerFee1 = fee1;
         controllerFee2 = fee2;
         controllerFee3 = fee3;
+        emit SetControllerFee(fee1, fee2, fee3);
     }
 
     function pause() external onlyGov {
