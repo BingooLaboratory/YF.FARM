@@ -4,8 +4,8 @@ const { get, execute, read, getArtifact } = deployments;
 describe("YF Pool", () => {
   // 有钱人
   const richer = '0xbB663e54106F61923b30c321210a9ff816Be4495';
-  const fund10 = ethers.utils.parseUnits('10');
-  const fund50 = ethers.utils.parseUnits('50');
+  const fund100 = ethers.utils.parseUnits('100');
+  const fund500 = ethers.utils.parseUnits('500');
 
   let sa, dev;
   let faker;
@@ -39,24 +39,25 @@ describe("YF Pool", () => {
     const deadline = Math.ceil((+Date.now())/1000) + 60;
     const yToken = await ethers.getContract('YFToken');
 
-    await execute('YFToken', { from: deployer }, 'mint', deployer, fund50);
-    await yToken.approve(router.address, fund50);
+    await execute('YFToken', { from: deployer }, 'mint', deployer, fund500);
+    await yToken.approve(router.address, fund500);
 
     // create WHT-KT pair
     await router.addLiquidityETH(
       yToken.address,
-      fund50,
+      fund500,
       0,
       0,
       deployer,
       deadline,
-      { value: fund50 }
+      { value: fund500 }
     ).then(tx => tx.wait());
   });
 
   it("Should deposit Single-Token spell to LP", async () => {
+    const { custodian } = await getNamedAccounts();
     const [ creator ] = await getUnnamedAccounts();
-    const options = { from: creator, value:  fund10 };
+    const options = { from: creator, value:  fund100 };
 
     const mdx_wht = await read('YFPool', 'poolInfo', 3);
     const strat = await ethers.getContractAt(strategy.abi, mdx_wht.strat);
@@ -74,11 +75,17 @@ describe("YF Pool", () => {
     expect(userShares).to.equal(sharesTotal);
     expect(sharesTotal).to.equal(wantLockedTotal);
     expect(hecoShares).to.equal(userShares);
+
+    // Harvest SwapMining Reward
+    const mdx = await ethers.getContractAt('YFToken', '0x25D2e80cB6B86881Fd7e07dd263Fb79f4AbE033c');
+    await strat.harvestSwapMiningReward();
+    const reward = await mdx.balanceOf(custodian);
+    expect(reward).to.gt(0);
   });
 
   it("Should withdraw LP split to Single-Token", async () => {
     const [ creator ] = await getUnnamedAccounts();
-    const options = { from: creator, value:  fund10 };
+    const options = { from: creator, value:  fund100 };
 
     const mdx_wht = await read('YFPool', 'poolInfo', 3);
     const strat = await ethers.getContractAt(strategy.abi, mdx_wht.strat);
@@ -110,7 +117,7 @@ describe("YF Pool", () => {
     const [ creator ] = await getUnnamedAccounts();
     const { governor } = await ethers.getNamedSigner('governor');
 
-    const options = { from: creator, value: fund10 };
+    const options = { from: creator, value: fund100 };
     const yToken = await get('YFToken');
     const yPool = await ethers.getContract('YFPool', sa);
 
@@ -147,7 +154,7 @@ describe("YF Pool", () => {
 
   it("Should Single-Token spell LP to Staked", async () => {
     const [ creator ] = await getUnnamedAccounts();
-    const options = { from: creator, value:  fund10 };
+    const options = { from: creator, value:  fund100 };
 
     const wht_eth = await read('YFPool', 'poolInfo', 4);
     const strat = await ethers.getContractAt(strategy.abi, wht_eth.strat);
@@ -169,7 +176,7 @@ describe("YF Pool", () => {
 
   it("Should withdraw staked LP split to Single-Token", async () => {
     const [ creator ] = await getUnnamedAccounts();
-    const options = { from: creator, value:  fund10 };
+    const options = { from: creator, value:  fund100 };
 
     const wht_eth = await read('YFPool', 'poolInfo', 4);
     const strat = await ethers.getContractAt(strategy.abi, wht_eth.strat);
@@ -281,7 +288,7 @@ describe("YF Pool", () => {
     const [ creator ] = await getUnnamedAccounts();
     const { governor } = await ethers.getNamedSigner('governor');
 
-    const options = { from: creator, value: fund10 };
+    const options = { from: creator, value: fund100 };
     const mdx_wht = await read('YFPool', 'poolInfo', 3);
     const strat0  = await ethers.getContractAt(strategy.abi, mdx_wht.strat, governor);
 
@@ -314,9 +321,9 @@ describe("YF Pool", () => {
     [, tmp ] = await read('YFPool', 'stakedWantTokens', 3, creator);
 
     // 5. half withdraw
-    await execute('YFPool', { from: creator }, 'withdraw', 3, fund10);
+    await execute('YFPool', { from: creator }, 'withdraw', 3, fund100);
     [ total, capitals ] = await read('YFPool', 'stakedWantTokens', 3, creator);
     expect(total).to.above(capitals);
-    expect(tmp.sub(fund10)).to.equal(capitals);
+    expect(tmp.sub(fund100)).to.equal(capitals);
   });
 });

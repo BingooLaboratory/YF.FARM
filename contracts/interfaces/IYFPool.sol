@@ -10,8 +10,7 @@ interface IYFPool {
 
         uint _allocYPoint,
         uint _allocUPoint,
-        bool _allocHarvest,
-        bool _allocBuyback,
+        uint _allocBPoint,
 
         address _want,
         address _earned,
@@ -24,8 +23,7 @@ interface IYFPool {
 
         uint _allocYPoint,
         uint _allocUPoint,
-        bool _allocHarvest,
-        bool _allocBuyback
+        uint _allocBPoint
     ) external;
 
     function pending(uint pid, address user) external view returns (uint r1_, uint r2_, uint r3_);

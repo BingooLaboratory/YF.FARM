@@ -23,11 +23,11 @@ npx ganache-cli --fork https://http-mainnet-node.huobichain.com@3463152 --chainI
 
 ## YF Token
 
-> 合约: [0x37cd594494bf81D438b92f89CaCb5eb7ef9242EC](http://hecoinfo.com/address/0x37cd594494bf81D438b92f89CaCb5eb7ef9242EC)
+> 合约: [0x21c055c4ac759e84609666af2df61ca65a5c1168](http://hecoinfo.com/address/0x21c055c4ac759e84609666af2df61ca65a5c1168)
 
 ## YF Pool
 
-> 合约: [0x78117e80A887e03C1F57B0975bC9a798Cc29eeF7](http://hecoinfo.com/address/0x78117e80A887e03C1F57B0975bC9a798Cc29eeF7)
+> 合约: [0xa4493e679aec8ec0f140d86900d982036f9e9aa5](http://hecoinfo.com/address/0xa4493e679aec8ec0f140d86900d982036f9e9aa5)
 
 ## YF Strategies
 
@@ -52,7 +52,9 @@ npx ganache-cli --fork https://http-mainnet-node.huobichain.com@3463152 --chainI
 The formula implemented in `optimalDepositA()` is derived on the condition that the swapping fee rate is 0.003 which may not be the case when this contract is deployed. An alternative swapping fee other than 0.003 would render the algorithm erroneous. We would like to inquire about possible measures to ensure the calculation is sound?
 
 ```
-  答: 如果手续变动，则会通过部署新的StratX来替换算法, 旧StratX会被暂停,只允许提现
+  A: If the swapping fee changes, the algorithm will be replaced by deploying a new Stratx Contract, and the old Stratx Contract will be suspended, only withdrawals are allowed.
+
+  答: 如果手续费变动，则会通过部署新的StratX contract 来替换算法, 旧StratX contract会被暂停,只允许提现
 ```
 
 > SXB-07: Governor Capability
@@ -60,5 +62,7 @@ The formula implemented in `optimalDepositA()` is derived on the condition that 
 The governor has the capability to transfer 'earned' or 'desire' tokens to any address through `inCaseTokenGetStuck()`. While this capability offers a solution to the potential predicament the function name suggests, it could also be abused to enrich a selected few. This presents an issue we are concerned about and on which possible precautions we would like to inquire about.
 
 ```
+  A: Because Stratx never holds any token capital, so inCaseTokenGetStuck is safe. It may be needed when there are computational precision rounding.
+
   答: 因为 StratX 从来不持有任何资金, 所以 inCaseTokensGetStuck 是安全的。当有计算精度舍入时可能会需要它。
 ```

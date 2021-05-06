@@ -40,6 +40,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
     uint public totalYAllocPoint = 0; // Total YF allocation points. Must be the sum of all allocation points in all pools.
     uint public totalUAllocPoint = 0;
+    uint public totalBAllocPoint = 0;
 
     // Info of each user.
     struct UserInfo {
@@ -69,9 +70,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
         uint allocYPoint; // How many allocation points assigned to this pool. YFToken to distribute per block.
         uint allocUPoint;
-
-        bool allocHarvest;
-        bool allocBuyback; // How many allocation points assigned to buyback YFToken
+        uint allocBPoint; // How many allocation points assigned to buyback YFToken
 
         uint lastRewardBlock; // Last block number that YFToken distribution occurs.
 
@@ -92,9 +91,9 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
     address public immutable YFToken;
     address public constant USDT = 0xa71EdC38d189767582C38A3145b5873052c3e47a;
 
-    uint public constant startBlock = 3888888;
-    uint public constant YFTokenMaxSupply = 500e18;
-    uint public constant YFTokenPerBlock  = 300000000000000;  // YF tokens created per block
+    uint public constant startBlock = 4048888;
+    uint public constant YFTokenMaxSupply = 300e18;
+    uint public constant YFTokenPerBlock  = 350000000000000;  // YF tokens created per block
 
     address private constant _NO_ADDRESS = address(1);
     address public override EXECUTOR; // TEMPORARY: user currently under execution.
@@ -119,9 +118,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
         uint _allocYPoint,
         uint _allocUPoint,
-
-        bool _allocHarvest,
-        bool _allocBuyback,
+        uint _allocBPoint,
 
         address _want,
         address _earned,
@@ -134,6 +131,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         uint lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         totalYAllocPoint = totalYAllocPoint.add(_allocYPoint);
         totalUAllocPoint = totalUAllocPoint.add(_allocUPoint);
+        totalBAllocPoint = totalBAllocPoint.add(_allocBPoint);
 
         poolInfo.push(
             PoolInfo({
@@ -143,9 +141,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
                 allocYPoint:     _allocYPoint,
                 allocUPoint:     _allocUPoint,
-
-                allocHarvest:     _allocHarvest,
-                allocBuyback:     _allocBuyback,
+                allocBPoint:     _allocBPoint,
 
                 lastRewardBlock: lastRewardBlock,
 
@@ -165,9 +161,7 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
 
         uint _allocYPoint,
         uint _allocUPoint,
-
-        bool _allocHarvest,
-        bool _allocBuyback
+        uint _allocBPoint
     ) public override onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
@@ -180,12 +174,13 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
         totalUAllocPoint = totalUAllocPoint.sub(pool.allocUPoint).add(
             _allocUPoint
         );
+        totalBAllocPoint = totalBAllocPoint.sub(pool.allocBPoint).add(
+            _allocBPoint
+        );
 
         pool.allocYPoint = _allocYPoint;
         pool.allocUPoint = _allocUPoint;
-
-        pool.allocHarvest = _allocHarvest;
-        pool.allocBuyback = _allocBuyback;
+        pool.allocBPoint = _allocBPoint;
     }
 
     // Return reward multiplier over the given _from to _to block.
@@ -242,6 +237,16 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
             PoolInfo storage pool = poolInfo[i];
             uint sharesTotal = pool.strat.sharesTotal();
 
+            // 45% MDX
+            if (address(pool.strat) == msg.sender) {
+                if (sharesTotal > 0) {
+                    pool.accHPerShare = pool.accHPerShare.add(
+                        harvest_.mul(1e12).div(sharesTotal)
+                    );
+                }
+            }
+
+            // 3% USDT
             if (pool.allocUPoint > 0) {
                 uint reward = fee_.mul(pool.allocUPoint).div(totalUAllocPoint);
                 if (sharesTotal > 0) {
@@ -251,18 +256,12 @@ contract YFPool is Ownable, ReentrancyGuard, IYFPool {
                 }
             }
 
-            if (pool.allocHarvest) {
-                if (sharesTotal > 0) {
-                    pool.accHPerShare = pool.accHPerShare.add(
-                        harvest_.mul(1e12).div(sharesTotal)
-                    );
-                }
-            }
-
-            if (pool.allocBuyback) {
+            // 3% Buyback YF
+            if (pool.allocBPoint > 0) {
+                uint reward = buyback_.mul(pool.allocBPoint).div(totalBAllocPoint);
                 if (sharesTotal > 0) {
                     pool.accYPerShare = pool.accYPerShare.add(
-                        buyback_.mul(1e12).div(sharesTotal)
+                        reward.mul(1e12).div(sharesTotal)
                     );
                 }
             }

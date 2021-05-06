@@ -47,8 +47,7 @@ describe("Timelock Controller", () => {
       0,
       10,
       10,
-      true,
-      true,
+      10,
       bytes32,
       bytes32
     ).catch(err => err);

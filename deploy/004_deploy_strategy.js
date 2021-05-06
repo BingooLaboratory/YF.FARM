@@ -56,8 +56,7 @@ const func = async ({ getNamedAccounts, deployments, network }) => {
         true,         // _withUpdate
         0,            // _allocYPoint
         0,            // _allocUPoint
-        true,         // _allocHarvest
-        true,         // _allocBuyback
+        100,          // _allocBPoint
         desire,       // deposit token
         earned,
         strat.address // 策略
@@ -100,8 +99,7 @@ const func = async ({ getNamedAccounts, deployments, network }) => {
         true,         // _withUpdate
         100,          // _allocYPoint
         100,          // _allocUPoint
-        false,        // _allocHarvest
-        false,        // _allocBuyback
+        0,            // _allocBPoint
         desire,       // deposit token
         AddressZero,
         strat.address // 策略
@@ -118,8 +116,7 @@ const func = async ({ getNamedAccounts, deployments, network }) => {
       const isAutoComp   = i < 30 ? true : false;
       const allocYPoint  = i < 30 ? 0 : 100;
       const allocUPoint  = i < 30 ? 0 : 100;
-      const allocHarvest = i < 30 ? true : false;
-      const allocBuyback = i < 30 ? true : false;
+      const allocBPoint  = i < 30 ? 100 : 0;
 
       // create strategy
       const strat = await deploy('StratX', {
@@ -156,8 +153,7 @@ const func = async ({ getNamedAccounts, deployments, network }) => {
         true,         // _withUpdate
         allocYPoint,  // _allocYPoint
         allocUPoint,  // _allocUPoint
-        allocHarvest, // _allocHarvest
-        allocBuyback, // _allocBuyback
+        allocBPoint,  // allocBPoint
         desire,       // deposit token
         isAutoComp ? earned : ethers.constants.AddressZero,
         strat.address // 策略

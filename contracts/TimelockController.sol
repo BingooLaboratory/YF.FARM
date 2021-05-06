@@ -441,8 +441,7 @@ contract TimelockController is AccessControl {
 
         uint _allocYPoint,
         uint _allocUPoint,
-        bool _allocHarvest,
-        bool _allocBuyback,
+        uint _allocBPoint,
         bytes32 predecessor,
         bytes32 salt
     ) public onlyRole(EXECUTOR_ROLE) {
@@ -454,8 +453,7 @@ contract TimelockController is AccessControl {
                     _pid,
                     _allocYPoint,
                     _allocUPoint,
-                    _allocHarvest,
-                    _allocBuyback,
+                    _allocBPoint,
                     predecessor,
                     salt
                 )
@@ -483,8 +481,7 @@ contract TimelockController is AccessControl {
         uint _pid,
         uint _allocYPoint,
         uint _allocUPoint,
-        bool _allocHarvest,
-        bool _allocBuyback,
+        uint _allocBPoint,
 
         bytes32 predecessor,
         bytes32 salt
@@ -497,8 +494,7 @@ contract TimelockController is AccessControl {
                     _pid,
                     _allocYPoint,
                     _allocUPoint,
-                    _allocHarvest,
-                    _allocBuyback,
+                    _allocBPoint,
                     predecessor,
                     salt
                 )
@@ -510,8 +506,7 @@ contract TimelockController is AccessControl {
             _pid,
             _allocYPoint,
             _allocUPoint,
-            _allocHarvest,
-            _allocBuyback
+            _allocBPoint
         );
         _afterCall(id);
     }
@@ -528,7 +523,7 @@ contract TimelockController is AccessControl {
         address _earned,
         IStrategy _strat
     ) public onlyRole(EXECUTOR_ROLE) {
-        _pool.add(_withUpdate, 0, 0, false, false, _want, _earned, _strat); // allocPoint = 0. Schedule set (timelocked) to increase allocPoint.
+        _pool.add(_withUpdate, 0, 0, 0, _want, _earned, _strat); // allocPoint = 0. Schedule set (timelocked) to increase allocPoint.
     }
 
     function earn(address _stratAddress) public onlyRole(EXECUTOR_ROLE) {
